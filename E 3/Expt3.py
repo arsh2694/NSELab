@@ -1,54 +1,29 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Sep  8 23:51:22 2025
-
-@author: navee
-"""
-
-import hashlib
-import time
-import random
+# challenge_response_exp.py
+import hashlib, time, secrets
 
 shared_secret = "network_secret_key"
+FRESHNESS_WINDOW = 5  # seconds
 
 def generate_nonce():
-    return str(random.randint(100000, 999999))
+    return secrets.token_hex(8)  # cryptographically stronger nonce
 
-def hash_response(nonce, secret):
-    return hashlib.sha256((nonce + secret).encode()).hexdigest()
+def hash_response(nonce, secret, timestamp=None):
+    s = nonce + (timestamp or "") + secret
+    return hashlib.sha256(s.encode()).hexdigest()
 
-# Server side: generate nonce
+# Server -> Client
 nonce = generate_nonce()
-print("Server sends nonce to client:", nonce)
+print("Server sends nonce:", nonce)
 
-# Client side: compute response hash
-client_response = hash_response(nonce, shared_secret)
-print("Client sends encrypted response:", client_response)
-
-# Server side: verify response
-expected_response = hash_response(nonce, shared_secret)
-
-if client_response == expected_response:
-    print("Authentication Successful")
-else:
-    print("Authentication Failed")
-
-# To handle replay attack: include timestamp
-
+# Client computes (optionally with timestamp)
 timestamp = str(int(time.time()))
-nonce_with_time = nonce + timestamp
-response_with_time = hashlib.sha256((nonce_with_time + shared_secret).encode()).hexdigest()
-print("Client sends encrypted response with timestamp:", response_with_time)
+client_resp = hash_response(nonce, shared_secret, timestamp)
+print("Client sends response (with timestamp):", client_resp, " ts:", timestamp)
 
-# Server verifies timestamp freshness (e.g., within 5 seconds)
-current_time = int(time.time())
-received_time = int(timestamp)
-
-if abs(current_time - received_time) <= 5:
-    expected_response_time = hashlib.sha256((nonce + timestamp + shared_secret).encode()).hexdigest()
-    if response_with_time == expected_response_time:
-        print("Authentication Successful with replay protection")
-    else:
-        print("Authentication Failed")
+# Server verifies freshness + hash
+now = int(time.time())
+if abs(now - int(timestamp)) <= FRESHNESS_WINDOW:
+    expected = hash_response(nonce, shared_secret, timestamp)
+    print("Auth result:", "Success" if client_resp == expected else "Failed")
 else:
-    print("Replay attack detected - timestamp expired")
+    print("Replay detected / timestamp expired")
